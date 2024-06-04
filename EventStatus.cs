@@ -38,7 +38,8 @@ public class EventStatus : BasePlugin
     public void OnEStart(CCSPlayerController? caller, CommandInfo commandInfo)
     {
         if (!EventStarted) { 
-            List<CCSPlayerController> allPlayers = Utilities.GetPlayers();
+            List<CCSPlayerController> allPlayersBots = Utilities.GetPlayers();
+            var allPlayers = allPlayersBots.Where(x => !x.IsBot);
             eventStartTime = DateTime.UtcNow;
             playerTimes.Clear();
             playerJoinTimes.Clear();
@@ -125,7 +126,7 @@ public class EventStatus : BasePlugin
     {
         CCSPlayerController? player = @event.Userid;
 
-        if (player != null)
+        if (player != null && !player.IsBot)
         {
             var steamIdString = player.SteamID.ToString();
             if (eventStartTime != null && player != null)
