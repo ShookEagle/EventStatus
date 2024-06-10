@@ -10,20 +10,18 @@ using CounterStrikeSharp.API.Modules.Entities;
 using CounterStrikeSharp.API.Modules.Utils;
 using Microsoft.Extensions.Logging;
 
-
 namespace EventStatus;
 
 public class EventStatus : BasePlugin
 {
     public override string ModuleName => "EventStatus";
-    public override string ModuleVersion => "1.0.0";
+    public override string ModuleVersion => "1.2.0";
     public override string ModuleAuthor => "ShookEagle";
 
-    private Dictionary<string, TimeSpan> playerTimes = new Dictionary<string, TimeSpan>();
-    private Dictionary<string, DateTime> playerJoinTimes = new Dictionary<string, DateTime>();
+    private Dictionary<string, PlayerData> playersData = new Dictionary<string, PlayerData>();
     private DateTime? eventStartTime = null;
-    private HashSet<string> allPlayerIds = new HashSet<string>();
     private bool EventStarted;
+    private int PeakPlayers = 0;
 
     public override void Load(bool hotReload)
     {
@@ -37,27 +35,33 @@ public class EventStatus : BasePlugin
     [RequiresPermissions("@css/rcon")]
     public void OnEStart(CCSPlayerController? caller, CommandInfo commandInfo)
     {
-        if (!EventStarted) { 
+        if (!EventStarted)
+        {
             List<CCSPlayerController> allPlayersBots = Utilities.GetPlayers();
             var allPlayers = allPlayersBots.Where(x => !x.IsBot);
             eventStartTime = DateTime.UtcNow;
-            playerTimes.Clear();
-            playerJoinTimes.Clear();
-            allPlayerIds.Clear();
+            playersData.Clear();
             EventStarted = true;
+            PeakPlayers = Utilities.GetPlayers().Count;
             foreach (var player in allPlayers)
             {
                 var steamIdString = player.SteamID.ToString();
-                playerJoinTimes[steamIdString] = DateTime.UtcNow;
-                allPlayerIds.Add(steamIdString);
+                playersData[steamIdString] = new PlayerData
+                {
+                    SteamId = steamIdString,
+                    PlayerName = player.PlayerName,
+                    JoinTime = DateTime.UtcNow
+                };
             }
             Server.PrintToChatAll($"[{ChatColors.DarkBlue}EC{ChatColors.White}] Event started.");
             Logger.LogInformation("DateTime Collection Started");
-        } else
+        }
+        else
         {
             Server.PrintToChatAll($"[{ChatColors.DarkBlue}EC{ChatColors.White}] An event is already started.");
         }
     }
+
     [ConsoleCommand("css_ecstatus", "Returns Current Event Status in Caller Console")]
     [ConsoleCommand("css_estatus", "Returns Current Event Status in Caller Console")]
     [CommandHelper(whoCanExecute: CommandUsage.CLIENT_ONLY)]
@@ -73,31 +77,32 @@ public class EventStatus : BasePlugin
             }
 
             var eventDuration = DateTime.UtcNow - eventStartTime.Value;
-            caller.PrintToConsole($"=== Begin Event Logs (Duration: {FormatTimeSpan(eventDuration)}) ===\n");
+            caller.PrintToConsole($"=== Begin Event Logs (Duration: {FormatTimeSpan(eventDuration)}) - (Peak: {PeakPlayers} players) ===\n");
 
             int rank = 1;
-            foreach (var steamIdString in allPlayerIds)
+            var orderedPlayers = playersData.Values
+                .OrderByDescending(player => player.TotalTimeSpent)
+                .ToList();
+
+            foreach (var player in orderedPlayers)
             {
-                var player = Utilities.GetPlayerFromSteamId(ulong.Parse(steamIdString));
-                var playerName = player != null ? player.PlayerName : "Unknown";
+                var timeSpent = player.TotalTimeSpent;
 
-                var timeSpent = playerTimes.ContainsKey(steamIdString)
-                    ? playerTimes[steamIdString]
-                    : TimeSpan.Zero;
-
-                if (playerJoinTimes.ContainsKey(steamIdString) && playerJoinTimes[steamIdString] != DateTime.MinValue)
+                if (player.JoinTime != DateTime.MinValue)
                 {
-                    timeSpent += DateTime.UtcNow - playerJoinTimes[steamIdString];
+                    timeSpent += DateTime.UtcNow - player.JoinTime;
                 }
 
-                caller.PrintToConsole($"#{rank}. {steamIdString} {playerName} {FormatTimeSpan(timeSpent)}\n");
+                caller.PrintToConsole($"#{rank}. {player.SteamId} {player.PlayerName} {FormatTimeSpan(timeSpent)}\n");
                 rank++;
             }
 
             caller.PrintToConsole("=== End Event Logs ===");
+            caller.PrintToChat($"[{ChatColors.DarkBlue}EC{ChatColors.White}] Status Output in Console.");
             Logger.LogInformation($"{caller.PlayerName} Called Status");
         }
     }
+
     [ConsoleCommand("css_estop", "Stops Event Status Collection")]
     [ConsoleCommand("css_stopevent", "Stops Event Status Collection")]
     [ConsoleCommand("css_endevent", "Stops Event Status Collection")]
@@ -109,30 +114,41 @@ public class EventStatus : BasePlugin
         if (EventStarted)
         {
             eventStartTime = null;
-            playerTimes.Clear();
-            playerJoinTimes.Clear();
-            allPlayerIds.Clear();
+            playersData.Clear();
             EventStarted = false;
             Server.PrintToChatAll($"[{ChatColors.DarkBlue}EC{ChatColors.White}] Event Stopped.");
             Logger.LogInformation("DateTime Collection Stopped");
-        } else
+            PeakPlayers = 0;
+        }
+        else
         {
             Server.PrintToChatAll($"[{ChatColors.DarkBlue}EC{ChatColors.White}] No event is currently running.");
         }
     }
 
     [GameEventHandler]
-    public HookResult OnPlayerConnectFull(EventPlayerConnectFull @event, GameEventInfo info)
+    public HookResult OnPlayerConnect(EventPlayerConnect @event, GameEventInfo info)
     {
         CCSPlayerController? player = @event.Userid;
 
         if (player != null && !player.IsBot)
         {
             var steamIdString = player.SteamID.ToString();
-            if (eventStartTime != null && player != null)
+            if (eventStartTime != null)
             {
-                playerJoinTimes[player.SteamID.ToString()] = DateTime.UtcNow;
-                allPlayerIds.Add(steamIdString);
+                if (!playersData.ContainsKey(steamIdString))
+                {
+                    playersData[steamIdString] = new PlayerData
+                    {
+                        SteamId = steamIdString,
+                        PlayerName = player.PlayerName
+                    };
+                }
+                playersData[steamIdString].JoinTime = DateTime.UtcNow;
+            }
+            if (PeakPlayers < Utilities.GetPlayers().Count)
+            {
+                PeakPlayers = Utilities.GetPlayers().Count;
             }
         }
         return HookResult.Continue;
@@ -145,20 +161,15 @@ public class EventStatus : BasePlugin
 
         if (player != null)
         {
-            if (eventStartTime != null && playerJoinTimes.ContainsKey(player.SteamID.ToString()))
+            var steamIdString = player.SteamID.ToString();
+            if (eventStartTime != null && playersData.ContainsKey(steamIdString))
             {
-                var steamIdString = player.SteamID.ToString();
-                if (!playerTimes.ContainsKey(steamIdString))
-                {
-                    playerTimes[steamIdString] = TimeSpan.Zero;
-                }
-
-                playerTimes[steamIdString] += DateTime.UtcNow - playerJoinTimes[steamIdString];
-                playerJoinTimes[steamIdString] = DateTime.MinValue;
-                return HookResult.Continue;
+                var playerData = playersData[steamIdString];
+                playerData.TotalTimeSpent += DateTime.UtcNow - playerData.JoinTime;
+                playerData.JoinTime = DateTime.MinValue;
             }
         }
-            return HookResult.Continue;
+        return HookResult.Continue;
     }
 
     private string FormatTimeSpan(TimeSpan timeSpan)
@@ -172,5 +183,13 @@ public class EventStatus : BasePlugin
             return $"{timeSpan.TotalMinutes:F2} minutes";
         }
         return $"{timeSpan.TotalSeconds:F2} seconds";
+    }
+
+    private class PlayerData
+    {
+        public string SteamId { get; set; } = "XXXXXXXXXXXXXXXXX";
+        public string PlayerName { get; set; } = "Unknown";
+        public TimeSpan TotalTimeSpent { get; set; } = TimeSpan.Zero;
+        public DateTime JoinTime { get; set; } = DateTime.MinValue;
     }
 }
