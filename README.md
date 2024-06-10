@@ -1,5 +1,5 @@
 # Event Status
-A CS2 Plugin Made to log the amount time each player spent active during an event for the [EdgeGamers](EdgeGamers.Com) Events Server.
+A CS2 Plugin Made to log the amount time each player spent active during an event for the [EdgeGamers](EdgeGamers.Com) Events Server. Repository Made for me to track changes.
 ## Description
 Plugin accurately tracks the amount of time plaer spends on the server.
 - Will stop timer when a player leaves
