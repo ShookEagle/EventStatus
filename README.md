@@ -6,6 +6,7 @@ Plugin accurately tracks the amount of time plaer spends on the server.
 - Will pick up where the timer left off if that same player rejoins
 - Will Track across map changes
 - Ignores Bots
+- Tracks Peak Player count during the event
 ## Requirements
 - [MetaMod:Source](https://github.com/alliedmodders/metamod-source/)
 - [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp)
