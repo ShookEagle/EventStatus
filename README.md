@@ -16,7 +16,7 @@ Plugin accurately tracks the amount of time plaer spends on the server.
 - css_estop: Stops the event and clears all tracked data.
 ### Sample Output
 ```
-=== Begin Event Logs (Duration: 1.42 hours) ===
+=== Begin Event Logs (Duration: 1.42 hours) - (Peak: 30 players) ===
 1. 12345678901234567 PlayerOne 1.40 hours
 2. 23456789012345678 PlayerTwo 1.35 hours
 3. 34567890123456789 PlayerThree 1.30 hours
